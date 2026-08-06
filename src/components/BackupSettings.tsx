@@ -1,30 +1,70 @@
-import React from 'react';
+import React, { useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 import { dbManager } from '../db/db';
 import { useDatabase } from '../db/DatabaseContext';
 import { Download, Upload, ShieldAlert, GitBranch, Code2, ExternalLink, Info } from 'lucide-react';
 
 export const BackupSettings: React.FC = () => {
   const { triggerRefresh } = useDatabase();
+  const importInputRef = useRef<HTMLInputElement>(null);
 
-  const handleLocalExport = () => {
+  // Helper: convert Uint8Array to base64
+  const uint8ToBase64 = (u8: Uint8Array): string => {
+    let binary = '';
+    const len = u8.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(u8[i]);
+    }
+    return btoa(binary);
+  };
+
+  const handleLocalExport = async () => {
     try {
-      const binary = dbManager.exportDatabaseBinary();
-      const blob = new Blob([binary as any], { type: 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
+      const binary = dbManager.exportDatabaseBinary() as Uint8Array;
       const dateStr = new Date().toISOString().split('T')[0];
-      link.download = `emi_tracker_india_${dateStr}.sqlite`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      const fileName = `emi_tracker_${dateStr}.sqlite`;
+
+      if (Capacitor.isNativePlatform()) {
+        // Android / iOS: write to Documents, then share
+        const base64Data = uint8ToBase64(binary);
+        await Filesystem.writeFile({
+          path: fileName,
+          data: base64Data,
+          directory: Directory.Documents,
+        });
+
+        const fileUri = await Filesystem.getUri({
+          directory: Directory.Documents,
+          path: fileName,
+        });
+
+        await Share.share({
+          title: 'EMI Tracker Backup',
+          text: `Your EMI Tracker backup (${dateStr})`,
+          url: fileUri.uri,
+          dialogTitle: 'Save or Share Backup',
+        });
+      } else {
+        // Web browser: standard blob download
+        const blob = new Blob([binary.buffer as ArrayBuffer], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
     } catch (e) {
-      alert('Local export failed. See logs.');
+      alert('Export failed. See console for details.');
       console.error(e);
     }
   };
 
-  const handleLocalImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLocalImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
       const reader = new FileReader();
@@ -34,16 +74,22 @@ export const BackupSettings: React.FC = () => {
           const u8array = new Uint8Array(buffer);
           if (window.confirm('WARNING: Importing this file will overwrite all your current data! Do you want to proceed?')) {
             await dbManager.importDatabaseBinary(u8array);
-            alert('Database successfully restored from local backup!');
+            alert('Database successfully restored from backup!');
             triggerRefresh();
           }
         } catch (err) {
           console.error(err);
-          alert('Failed to parse database file. Make sure it is a valid SQLite file.');
+          alert('Failed to parse backup file. Make sure it is a valid SQLite file.');
         }
       };
       reader.readAsArrayBuffer(file);
+      // Reset input so same file can be selected again
+      e.target.value = '';
     }
+  };
+
+  const handlePickFile = () => {
+    importInputRef.current?.click();
   };
 
   return (
@@ -69,10 +115,16 @@ export const BackupSettings: React.FC = () => {
           <button className="btn btn-primary" onClick={handleLocalExport} style={{ flex: 1, minWidth: 140 }}>
             <Download size={15} /> Export Database
           </button>
-          <label className="btn btn-outline" style={{ cursor: 'pointer', flex: 1, minWidth: 140 }}>
+          <button className="btn btn-outline" onClick={handlePickFile} style={{ flex: 1, minWidth: 140 }}>
             <Upload size={15} /> Restore Backup
-            <input type="file" accept=".sqlite, .db, .sqlite3" onChange={handleLocalImport} style={{ display: 'none' }} />
-          </label>
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".sqlite,.db,.sqlite3"
+            onChange={handleLocalImport}
+            style={{ display: 'none' }}
+          />
         </div>
 
         <div className="settings-info-banner">
@@ -131,4 +183,3 @@ export const BackupSettings: React.FC = () => {
     </div>
   );
 };
-
