@@ -13,6 +13,9 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- Match status bar color to app header gradient top -->
+        <item name="android:statusBarColor">#1a1035</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 
 

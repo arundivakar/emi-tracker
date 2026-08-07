@@ -32,6 +32,7 @@ import { formatINR, roundTo2 } from './utils/calculator';
 
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
+import { StatusBar, Style } from '@capacitor/status-bar';
 
 type TabType = 'loans' | 'dashboard' | 'profiles' | 'calculators' | 'reports' | 'settings';
 
@@ -163,8 +164,23 @@ export const App: React.FC = () => {
     editLoanIdRef.current = editLoanId;
   }, [navHistory, activeTab, selectedLoanId, showAddForm, editLoanId]);
 
-  // Load and apply theme
+  // Load and apply theme + sync status bar color
   useEffect(() => {
+    const applyStatusBar = async (t: 'light' | 'dark') => {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          // Always use dark style (white icons) since our header is always dark
+          await StatusBar.setStyle({ style: Style.Dark });
+          // Match the top of the header gradient for both themes
+          await StatusBar.setBackgroundColor({
+            color: t === 'dark' ? '#0f1117' : '#1a1035'
+          });
+        } catch (e) {
+          console.warn('StatusBar plugin error:', e);
+        }
+      }
+    };
+
     if (dbLoaded) {
       try {
         const themeRes = dbManager.runQuery("SELECT value FROM settings WHERE key = 'theme';");
@@ -172,6 +188,10 @@ export const App: React.FC = () => {
           const loadedTheme = themeRes[0].value as 'light' | 'dark';
           setTheme(loadedTheme);
           document.documentElement.setAttribute('data-theme', loadedTheme);
+          applyStatusBar(loadedTheme);
+        } else {
+          // Default light theme
+          applyStatusBar('light');
         }
       } catch (e) {
         console.error('Failed to load theme setting:', e);
@@ -272,6 +292,18 @@ export const App: React.FC = () => {
     const nextTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(nextTheme);
     document.documentElement.setAttribute('data-theme', nextTheme);
+
+    // Sync status bar color with theme
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await StatusBar.setStyle({ style: Style.Dark });
+        await StatusBar.setBackgroundColor({
+          color: nextTheme === 'dark' ? '#0f1117' : '#1a1035'
+        });
+      } catch (e) {
+        console.warn('StatusBar update failed:', e);
+      }
+    }
     
     if (dbLoaded) {
       try {
