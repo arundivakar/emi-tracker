@@ -9,6 +9,9 @@ import { PersonProfile } from './components/PersonProfile';
 import { Calculators } from './components/Calculators';
 import { Reports } from './components/Reports';
 import { BackupSettings } from './components/BackupSettings';
+import { CreditCards } from './components/CreditCards';
+import { Accounts } from './components/Accounts';
+import { FinancialOverview } from './components/FinancialOverview';
 import {
   Sun,
   Moon,
@@ -21,11 +24,13 @@ import {
   Calculator,
   FileSpreadsheet,
   Cloud,
-  Download,
   Settings,
   Info,
   Mail,
-  Star
+  Star,
+  CreditCard,
+  Wallet,
+  TrendingUp,
 } from 'lucide-react';
 import { requestNotificationPermission } from './utils/notifications';
 import { formatINR, roundTo2 } from './utils/calculator';
@@ -34,7 +39,7 @@ import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 
-type TabType = 'loans' | 'dashboard' | 'profiles' | 'calculators' | 'reports' | 'settings';
+type TabType = 'loans' | 'cards' | 'accounts' | 'dashboard' | 'profiles' | 'calculators' | 'reports' | 'settings' | 'overview';
 
 interface NavState {
   activeTab: TabType;
@@ -132,7 +137,7 @@ export const App: React.FC = () => {
     const diffY = e.changedTouches[0].clientY - touchStart.y;
     
     if (Math.abs(diffX) > Math.abs(diffY) * 1.5 && Math.abs(diffX) > 60) {
-      const pages: TabType[] = ['loans', 'dashboard', 'profiles'];
+      const pages: TabType[] = ['loans', 'cards', 'accounts', 'dashboard'];
       const currentIndex = pages.indexOf(activeTab);
       
       if (currentIndex !== -1) {
@@ -166,15 +171,13 @@ export const App: React.FC = () => {
 
   // Load and apply theme + sync status bar color
   useEffect(() => {
-    const applyStatusBar = async (t: 'light' | 'dark') => {
+    const applyStatusBar = async (_t: 'light' | 'dark') => {
       if (Capacitor.isNativePlatform()) {
         try {
-          // Always use dark style (white icons) since our header is always dark
+          // Overlay mode: status bar is transparent, app draws behind it
+          await StatusBar.setOverlaysWebView({ overlay: true });
+          // Keep icons white since header is always dark
           await StatusBar.setStyle({ style: Style.Dark });
-          // Match the top of the header gradient for both themes
-          await StatusBar.setBackgroundColor({
-            color: t === 'dark' ? '#0f1117' : '#1a1035'
-          });
         } catch (e) {
           console.warn('StatusBar plugin error:', e);
         }
@@ -293,13 +296,11 @@ export const App: React.FC = () => {
     setTheme(nextTheme);
     document.documentElement.setAttribute('data-theme', nextTheme);
 
-    // Sync status bar color with theme
+    // Sync status bar - keep overlay, just ensure icons stay white
     if (Capacitor.isNativePlatform()) {
       try {
+        await StatusBar.setOverlaysWebView({ overlay: true });
         await StatusBar.setStyle({ style: Style.Dark });
-        await StatusBar.setBackgroundColor({
-          color: nextTheme === 'dark' ? '#0f1117' : '#1a1035'
-        });
       } catch (e) {
         console.warn('StatusBar update failed:', e);
       }
@@ -376,36 +377,40 @@ export const App: React.FC = () => {
       return <LoanForm onSuccess={handleLoanCreated} onCancel={goBack} />;
     }
 
-    // Carousel swipeable pages
-    if (['loans', 'dashboard', 'profiles'].includes(activeTab)) {
-      const pageIndex = ['loans', 'dashboard', 'profiles'].indexOf(activeTab);
+    // ── 4-tab swipeable carousel: Home | Cards | Accounts | Dashboard ──
+    if (['loans', 'cards', 'accounts', 'dashboard'].includes(activeTab)) {
+      const pages: TabType[] = ['loans', 'cards', 'accounts', 'dashboard'];
+      const pageIndex = pages.indexOf(activeTab);
       return (
-        <div 
+        <div
           className="swipe-viewport"
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          <div 
+          <div
             className="swipe-container"
-            style={{ 
-              transform: `translateX(-${pageIndex * 100 / 3}%)`,
-              width: '300%'
+            style={{
+              transform: `translateX(-${pageIndex * 25}%)`,
+              width: '400%'
             }}
           >
-            <div className={`swipe-page ${activeTab === 'loans' ? 'active' : 'inactive'}`} style={{ width: '33.333%' }}>
-              <LoansList 
-                onSelectLoan={handleSelectLoan} 
+            <div className={`swipe-page ${activeTab === 'loans' ? 'active' : 'inactive'}`} style={{ width: '25%' }}>
+              <LoansList
+                onSelectLoan={handleSelectLoan}
                 onNavigate={(tab, params) => navigateTo({ activeTab: tab, selectedLoanId: null, showAddForm: false, editLoanId: null, ...params })}
                 onOpenDrawer={() => setShowDrawer(true)}
                 theme={theme}
                 onToggleTheme={toggleTheme}
               />
             </div>
-            <div className={`swipe-page ${activeTab === 'dashboard' ? 'active' : 'inactive'}`} style={{ width: '33.333%' }}>
-              <Dashboard onSelectLoan={handleSelectLoan} />
+            <div className={`swipe-page ${activeTab === 'cards' ? 'active' : 'inactive'}`} style={{ width: '25%' }}>
+              <CreditCards />
             </div>
-            <div className={`swipe-page ${activeTab === 'profiles' ? 'active' : 'inactive'}`} style={{ width: '33.333%' }}>
-              <PersonProfile onSelectLoan={handleSelectLoan} />
+            <div className={`swipe-page ${activeTab === 'accounts' ? 'active' : 'inactive'}`} style={{ width: '25%' }}>
+              <Accounts />
+            </div>
+            <div className={`swipe-page ${activeTab === 'dashboard' ? 'active' : 'inactive'}`} style={{ width: '25%' }}>
+              <Dashboard onSelectLoan={handleSelectLoan} />
             </div>
           </div>
         </div>
@@ -413,26 +418,30 @@ export const App: React.FC = () => {
     }
 
     switch (activeTab) {
+      case 'profiles':
+        return <PersonProfile onSelectLoan={handleSelectLoan} />;
       case 'calculators':
         return <Calculators defaultType={defaultCalculatorType} />;
       case 'reports':
         return <Reports />;
       case 'settings':
         return <BackupSettings />;
+      case 'overview':
+        return <FinancialOverview />;
       default:
         return (
-          <div 
+          <div
             className="swipe-viewport"
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
           >
-            <div 
+            <div
               className="swipe-container"
-              style={{ transform: `translateX(0%)`, width: '300%' }}
+              style={{ transform: `translateX(0%)`, width: '400%' }}
             >
-              <div className="swipe-page active" style={{ width: '33.333%' }}>
-                <LoansList 
-                  onSelectLoan={handleSelectLoan} 
+              <div className="swipe-page active" style={{ width: '25%' }}>
+                <LoansList
+                  onSelectLoan={handleSelectLoan}
                   onNavigate={(tab, params) => navigateTo({ activeTab: tab, selectedLoanId: null, showAddForm: false, editLoanId: null, ...params })}
                   onOpenDrawer={() => setShowDrawer(true)}
                   theme={theme}
@@ -446,7 +455,7 @@ export const App: React.FC = () => {
   };
 
   const isHomeView = activeTab === 'loans' && selectedLoanId === null && !showAddForm && editLoanId === null;
-  const showBottomNav = ['loans', 'dashboard', 'profiles'].includes(activeTab) && selectedLoanId === null && !showAddForm && editLoanId === null;
+  const showBottomNav = ['loans', 'cards', 'accounts', 'dashboard'].includes(activeTab) && selectedLoanId === null && !showAddForm && editLoanId === null;
 
   return (
     <div className="app-container">
@@ -456,8 +465,8 @@ export const App: React.FC = () => {
       {/* Drawer Menu */}
       <div className={`drawer-content ${showDrawer ? 'open' : ''}`}>
         <div className="drawer-header">
-          <h3 className="drawer-title">EMI Tracker</h3>
-          <span className="drawer-version">v1.0.0</span>
+          <h3 className="drawer-title">Finance Tracker</h3>
+          <span className="drawer-version">v2.0</span>
           <div className="drawer-summary">
             <div className="drawer-summary-item">
               <span>Active Loans:</span>
@@ -474,97 +483,104 @@ export const App: React.FC = () => {
           </div>
         </div>
         <div className="drawer-menu">
-          <button 
+          <button
             className={`drawer-item ${activeTab === 'loans' ? 'active' : ''}`}
             onClick={() => { setActiveTab('loans'); setShowDrawer(false); }}
           >
-            <Home size={18} /> <span>Home</span>
+            <Home size={18} /> <span>Home (EMIs)</span>
           </button>
-          <button 
+          <button
+            className={`drawer-item ${activeTab === 'cards' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('cards'); setShowDrawer(false); }}
+          >
+            <CreditCard size={18} /> <span>Credit Cards</span>
+          </button>
+          <button
+            className={`drawer-item ${activeTab === 'accounts' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('accounts'); setShowDrawer(false); }}
+          >
+            <Wallet size={18} /> <span>Accounts</span>
+          </button>
+          <button
             className={`drawer-item ${activeTab === 'dashboard' ? 'active' : ''}`}
             onClick={() => { setActiveTab('dashboard'); setShowDrawer(false); }}
           >
             <BarChart3 size={18} /> <span>Dashboard</span>
           </button>
-          <button 
+          <button
+            className={`drawer-item ${activeTab === 'overview' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('overview'); setShowDrawer(false); }}
+          >
+            <TrendingUp size={18} /> <span>Financial Overview</span>
+          </button>
+          <button
             className={`drawer-item ${activeTab === 'profiles' ? 'active' : ''}`}
             onClick={() => { setActiveTab('profiles'); setShowDrawer(false); }}
           >
             <Users size={18} /> <span>People</span>
           </button>
-          <button 
+          <button
             className={`drawer-item ${activeTab === 'calculators' ? 'active' : ''}`}
             onClick={() => { navigateTo({ activeTab: 'calculators', defaultCalculatorType: 'emi' }); setShowDrawer(false); }}
           >
             <Calculator size={18} /> <span>EMI Calculator</span>
           </button>
-          <button 
+          <button
             className={`drawer-item ${activeTab === 'reports' ? 'active' : ''}`}
             onClick={() => { setActiveTab('reports'); setShowDrawer(false); }}
           >
             <FileSpreadsheet size={18} /> <span>Reports</span>
           </button>
-          <button 
+          <button
             className="drawer-item"
-            onClick={() => { 
+            onClick={() => {
               setShowDrawer(false);
               alert(nextEmiAlert ? `Next Due Payment: ${nextEmiAlert.purchase_name} (${formatINR(nextEmiAlert.total_installment)} due on ${nextEmiAlert.due_date})` : 'No upcoming reminders.');
             }}
           >
             <Bell size={18} /> <span>Reminders</span>
           </button>
-          <button 
+          <button
             className={`drawer-item ${activeTab === 'settings' ? 'active' : ''}`}
             onClick={() => { setActiveTab('settings'); setShowDrawer(false); }}
           >
-            <Cloud size={18} /> <span>Backup & Restore</span>
+            <Cloud size={18} /> <span>Backup &amp; Restore</span>
           </button>
-          <button 
+          <button
             className="drawer-item"
-            onClick={() => { 
-              setActiveTab('reports');
-              setShowDrawer(false);
-            }}
+            onClick={() => { toggleTheme(); }}
           >
-            <Download size={18} /> <span>Export Data</span>
+            <Moon size={18} /> <span>Theme ({theme === 'light' ? 'Light' : 'Dark'})</span>
           </button>
-          <button 
-            className="drawer-item"
-            onClick={() => {
-              toggleTheme();
-            }}
-          >
-            <Moon size={18} /> <span>Theme Settings ({theme === 'light' ? 'Light' : 'Dark'})</span>
-          </button>
-          <button 
+          <button
             className={`drawer-item ${activeTab === 'settings' ? 'active' : ''}`}
             onClick={() => { setActiveTab('settings'); setShowDrawer(false); }}
           >
             <Settings size={18} /> <span>App Settings</span>
           </button>
-          <button 
+          <button
             className="drawer-item"
-            onClick={() => { 
+            onClick={() => {
               setShowDrawer(false);
-              alert("EMI Tracker v1.0.0\nAn offline-first personal finance application for tracking loan EMIs.\nBuilt with Vite + React + SQLite Wasm.");
+              alert("Finance Tracker v2.0\nPersonal Finance + EMI + Credit Cards + Accounts\nBuilt with Vite + React + SQLite Wasm.");
             }}
           >
             <Info size={18} /> <span>About App</span>
           </button>
-          <button 
+          <button
             className="drawer-item"
             onClick={() => {
               setShowDrawer(false);
-              window.location.href = "mailto:support@emitracker.com?subject=EMI Tracker Feedback";
+              window.location.href = "mailto:support@emitracker.com?subject=Finance Tracker Feedback";
             }}
           >
             <Mail size={18} /> <span>Contact Support</span>
           </button>
-          <button 
+          <button
             className="drawer-item"
             onClick={() => {
               setShowDrawer(false);
-              alert("Thank you for rating EMI Tracker! Your feedback is highly appreciated.");
+              alert("Thank you for rating Finance Tracker! Your feedback is highly appreciated.");
             }}
           >
             <Star size={18} /> <span>Rate App</span>
@@ -576,18 +592,18 @@ export const App: React.FC = () => {
       {!isHomeView && (
       <header className="app-header" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <button 
-            className="btn-ghost-icon" 
+          <button
+            className="btn-ghost-icon"
             onClick={() => setShowDrawer(true)}
             title="Menu"
           >
             <Menu size={20} />
           </button>
-          <h1 
-            onClick={() => { navigateTo({ activeTab: 'loans', selectedLoanId: null, showAddForm: false, editLoanId: null }); }} 
+          <h1
+            onClick={() => { navigateTo({ activeTab: 'loans', selectedLoanId: null, showAddForm: false, editLoanId: null }); }}
             style={{ cursor: 'pointer', fontSize: '1rem', fontWeight: 500, color: 'var(--text-primary)', fontFamily: 'var(--font-sans)', margin: 0 }}
           >
-            EMI Tracker
+            Finance Tracker
           </h1>
         </div>
         <div className="header-actions" style={{ display: 'flex', gap: '0.2rem' }}>
@@ -598,8 +614,8 @@ export const App: React.FC = () => {
           >
             {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
           </button>
-          <button 
-            className="btn-ghost-icon" 
+          <button
+            className="btn-ghost-icon"
             onClick={() => {
               alert(nextEmiAlert ? `Next Due Payment: ${nextEmiAlert.purchase_name} (${formatINR(nextEmiAlert.total_installment)} due on ${nextEmiAlert.due_date})` : 'No upcoming payments.');
             }}
@@ -613,36 +629,37 @@ export const App: React.FC = () => {
 
       {/* Main body content */}
       <main className={`app-main${isHomeView ? ' app-main-home' : ''}`}>
-        {/* Swipe Indicators Dots removed for minimalist look */}
-
-        {/* Dynamic component mounting */}
         {renderContent()}
       </main>
 
-      {/* Bottom Navigation Bar */}
+      {/* Bottom Navigation Bar — 4 tabs */}
       {showBottomNav && (
         <nav className="app-bottom-nav">
           <button className={`app-bottom-nav-item ${activeTab === 'loans' ? 'active' : ''}`} onClick={() => setActiveTab('loans')}>
             <Home size={22} />
             <span>Home</span>
           </button>
+          <button className={`app-bottom-nav-item ${activeTab === 'cards' ? 'active' : ''}`} onClick={() => setActiveTab('cards')}>
+            <CreditCard size={22} />
+            <span>Cards</span>
+          </button>
+          <button className={`app-bottom-nav-item ${activeTab === 'accounts' ? 'active' : ''}`} onClick={() => setActiveTab('accounts')}>
+            <Wallet size={22} />
+            <span>Accounts</span>
+          </button>
           <button className={`app-bottom-nav-item ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
             <BarChart3 size={22} />
             <span>Dashboard</span>
-          </button>
-          <button className={`app-bottom-nav-item ${activeTab === 'profiles' ? 'active' : ''}`} onClick={() => setActiveTab('profiles')}>
-            <Users size={22} />
-            <span>People</span>
           </button>
         </nav>
       )}
 
       {/* Floating Action Button (FAB) */}
       {activeTab === 'loans' && selectedLoanId === null && !showAddForm && editLoanId === null && (
-        <button 
-          className="fab-add" 
+        <button
+          className="fab-add"
           style={{ bottom: showBottomNav ? '5rem' : '2rem' }}
-          onClick={handleAddLoanClick} 
+          onClick={handleAddLoanClick}
           title="Add New Loan"
         >
           <Plus size={18} />
